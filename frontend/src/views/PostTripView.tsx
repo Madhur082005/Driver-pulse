@@ -52,9 +52,9 @@ export function PostTripView() {
       : "text-[#E54937]";
 
   return (
-    <div className="space-y-4 pb-6">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-6">
       {/* ── Trip Selector ──────────────────────────────────────────── */}
-      <div className="relative">
+      <div className="relative lg:col-span-12">
         <select
           value={selectedIdx}
           onChange={(e) => setSelectedIdx(Number(e.target.value))}
@@ -80,7 +80,7 @@ export function PostTripView() {
       </div>
 
       {/* ── Trip Meta ──────────────────────────────────────────────── */}
-      <div className="flex items-center gap-4 text-[11px] text-[#555]">
+      <div className="flex items-center gap-4 text-[11px] text-[#555] lg:col-span-12">
         <span className="flex items-center gap-1">
           <Clock size={11} aria-label="Duration" />
           {trip.duration}
@@ -96,7 +96,7 @@ export function PostTripView() {
       </div>
 
       {/* ── Quality Score ──────────────────────────────────────────── */}
-      <Card>
+      <Card className="lg:col-span-6">
         <div className="flex items-center justify-between">
           <div>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-[#555]">
@@ -121,7 +121,7 @@ export function PostTripView() {
       {hasEvents ? (
         <>
           {/* ── Event Distribution ────────────────────────────────── */}
-          <Card>
+          <Card className="lg:col-span-6">
             <span className="block mb-3 text-[10px] font-semibold uppercase tracking-widest text-[#555]">
               Event Distribution
             </span>
@@ -129,7 +129,7 @@ export function PostTripView() {
           </Card>
 
           {/* ── Stress Event Timeline ────────────────────────────── */}
-          <Card>
+          <Card className="lg:col-span-12">
             <span className="block mb-4 text-[10px] font-semibold uppercase tracking-widest text-[#555]">
               Flagged Moments
             </span>
@@ -138,7 +138,7 @@ export function PostTripView() {
         </>
       ) : (
         /* ── Empty State ──────────────────────────────────────────── */
-        <div className="flex flex-col items-center justify-center py-14 text-center">
+        <div className="flex flex-col items-center justify-center py-14 text-center lg:col-span-12">
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#05C168]/10">
             <Sparkles size={28} className="text-[#05C168]" aria-label="Clean trip" />
           </div>

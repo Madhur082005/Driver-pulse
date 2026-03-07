@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,7 +23,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#000000" />
       </head>
       <body>
-        <div id="app-shell">{children}</div>
+        <Providers>
+          <div id="app-shell">{children}</div>
+        </Providers>
       </body>
     </html>
   );

@@ -45,10 +45,10 @@ export function MidShiftView() {
   const hoursRemaining = shiftData.totalHours - shiftData.hoursWorked;
 
   return (
-    <div className="space-y-4 pb-6">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-6">
       {/* ── Status Banner ──────────────────────────────────────────── */}
       <div
-        className={`rounded-2xl ${config.bg} border ${config.border} p-4 flex items-start gap-3`}
+        className={`rounded-2xl ${config.bg} border ${config.border} p-4 flex items-start gap-3 lg:col-span-12`}
       >
         <div className="mt-0.5 shrink-0">
           <PaceIcon size={20} aria-label={config.label} />
@@ -62,7 +62,7 @@ export function MidShiftView() {
       </div>
 
       {/* ── Earnings Goal ──────────────────────────────────────────── */}
-      <Card>
+      <Card className="lg:col-span-6">
         <div className="flex items-center gap-2 mb-1">
           <Target size={14} className="text-[#555]" aria-label="Earnings goal" />
           <span className="text-[10px] font-semibold uppercase tracking-widest text-[#555]">
@@ -85,7 +85,7 @@ export function MidShiftView() {
       </Card>
 
       {/* ── Velocity Stats ─────────────────────────────────────────── */}
-      <Card>
+      <Card className="lg:col-span-6">
         <div className="flex items-center gap-2 mb-4">
           <Zap size={14} className="text-[#555]" aria-label="Velocity" />
           <span className="text-[10px] font-semibold uppercase tracking-widest text-[#555]">
@@ -114,7 +114,7 @@ export function MidShiftView() {
       </Card>
 
       {/* ── Earnings Chart ─────────────────────────────────────────── */}
-      <Card>
+      <Card className="lg:col-span-12">
         <div className="flex items-center gap-2 mb-3">
           <TrendingUp size={14} className="text-[#555]" aria-label="Earnings chart" />
           <span className="text-[10px] font-semibold uppercase tracking-widest text-[#555]">
@@ -125,7 +125,7 @@ export function MidShiftView() {
       </Card>
 
       {/* ── Shift Progress ─────────────────────────────────────────── */}
-      <Card>
+      <Card className="lg:col-span-12">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Clock size={14} className="text-[#555]" aria-label="Shift progress" />
