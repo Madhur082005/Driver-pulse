@@ -468,6 +468,12 @@ for trip_id, grp in merged.groupby("trip_id"):
     gravity   = GravityCompensator()   # calibrates on first 3 stationary samples
     audio_clf = AudioClassifier()      # calibrates dB baseline in first 60s
     prev_speed = 0.0
+    motion_events_count = 0
+    audio_events_count = 0
+    flagged_count = 0
+    all_conflict_scores = []
+    max_severity = "safe"
+    severity_order = {"safe": 0, "low": 1, "medium": 2, "high": 3}
 
     for _, row in grp.iterrows():
         # 1. Gravity compensation
@@ -489,21 +495,37 @@ for trip_id, grp in merged.groupby("trip_id"):
         # 5. Fusion
         fusion_result = fuse(motion_result, audio_result)
 
-        # 6. Gate on severity and accumulate
+        # 6. Track event counts and gate on severity
+        if motion_result.event_type not in ("normal", "road_noise"):
+            motion_events_count += 1
+        if audio_result.classification != "background":
+            audio_events_count += 1
         if fusion_result.severity in {"low", "medium", "high"}:
-            flagged_rows.append({...})
+            flagged_count += 1
+            flagged_rows.append({...}) # Details for flagged_moments_demo.csv
+        
+        all_conflict_scores.append(fusion_result.conflict_score)
+        if severity_order[fusion_result.severity] > severity_order[max_severity]:
+            max_severity = fusion_result.severity
 ```
 
-After all samples for a trip are processed, per-trip aggregates are computed across **all samples** (not just flagged ones), so `mean_conflict_score` reflects the true ambient safety level of the trip:
+After all samples for a trip are processed, per-trip aggregates are computed:
 
 ```python
-conflict_arr = np.array(all_conflict_scores)
+earnings_velocity = fare / duration_min
+avg_motion_score = np.mean([r.motion_score for r in all_motion_results])
+avg_audio_score = np.mean([r.audio_score for r in all_audio_results])
+stress_score = (avg_motion_score * 0.55) + (avg_audio_score * 0.45)
+trip_quality_rating = _compute_trip_quality_rating(flagged_count, max_severity)  # 1–5 scale
+
 summary_rows.append({
-    "max_conflict_score":  round(float(conflict_arr.max()),  4),
-    "mean_conflict_score": round(float(conflict_arr.mean()), 4),
-    "high_count":   severity_counts["high"],
-    "medium_count": severity_counts["medium"],
-    "low_count":    severity_counts["low"],
+    "earnings_velocity":      earnings_velocity,
+    "motion_events_count":    motion_events_count,
+    "audio_events_count":     audio_events_count,
+    "flagged_moments_count":  flagged_count,
+    "max_severity":           max_severity,
+    "stress_score":           stress_score,
+    "trip_quality_rating":    trip_quality_rating,
     ...
 })
 ```
@@ -529,44 +551,41 @@ Mirrors `Data/trips/trips.csv` exactly, scoped to the 10 demo drivers:
 | `trip_status` | string | `completed` / `cancelled` |
 
 #### `flagged_moments_demo.csv`
-Reference-compatible with `Data/flagged_moments.csv`, enriched with fusion fields:
+Per-event flagged moments with context:
 
 | Column | Type | Description |
 |---|---|---|
-| `timestamp` | datetime | Exact moment of the event |
+| `flag_id` | string | Unique sequential ID (`FLAG0001`, `FLAG0002`, …) |
 | `trip_id` | string | |
 | `driver_id` | string | |
-| `event_type` | string | `harsh_braking`, `conflict_moment`, `audio_spike`, `sustained_stress`, etc. |
+| `timestamp` | datetime | Exact moment of the event |
+| `elapsed_seconds` | float | Seconds since trip start |
+| `flag_type` | string | `harsh_braking`, `conflict_moment`, `audio_spike`, `sustained_stress`, etc. |
 | `severity` | string | `high`, `medium`, or `low` |
-| `conflict_score` | float | Fused score, 0.0 – 1.0 |
-| `motion_score` | float | Raw motion component score |
-| `audio_score` | float | Raw audio component score |
-| `max_jerk_in_window` | float | Instantaneous jerk magnitude at this sample |
-| `avg_audio_in_window` | float | Raw dB level at this sample |
-| `rule_trigger` | string | Human-readable rule(s) that fired (e.g. `motion_harsh_brake + audio_elevated`) |
-| `description` | string | Full natural-language summary of the event |
+| `motion_score` | float | Raw motion component score (0.0 – 1.0) |
+| `audio_score` | float | Raw audio component score (0.0 – 1.0) |
+| `combined_score` | float | Fused conflict score (0.0 – 1.0) |
+| `explanation` | string | Human-readable summary (e.g. `Motion: harsh brake (score 0.82); Audio: elevated (score 0.35)`) |
+| `context` | string | Environment description (e.g. `Hard brake + Elevated noise`) |
 
 #### `trip_summaries_demo.csv`
-Aggregated per-trip metrics, matching the teammate's exact requirements:
+Aggregated per-trip metrics with quality scoring:
 
 | Column | Type | Description |
 |---|---|---|
 | `trip_id` | string | |
 | `driver_id` | string | |
 | `date` | date | |
-| `start_time` | time | From trips manifest |
-| `end_time` | time | From trips manifest |
-| `duration_min` | int | |
-| `distance_km` | float | |
-| `fare` | int | |
-| `total_samples` | int | Total sensor rows processed for this trip |
-| `total_flags_count` | int | Total events at severity low/medium/high |
-| `high_count` | int | Events at severity = `high` |
-| `medium_count` | int | Events at severity = `medium` |
-| `low_count` | int | Events at severity = `low` |
-| `max_conflict_score` | float | Peak conflict score across all samples |
-| `mean_conflict_score` | float | Average conflict score across **all** samples |
-| `avg_speed` | float | Average vehicle speed in km/h |
+| `duration_min` | float | Trip duration in minutes |
+| `distance_km` | float | Distance covered |
+| `fare` | float | Fare in local currency |
+| `earnings_velocity` | float | `fare / duration_min` (₹/min) |
+| `motion_events_count` | int | Total motion events (non-normal, non-road_noise) |
+| `audio_events_count` | int | Total audio events (non-background) |
+| `flagged_moments_count` | int | Total events at severity low/medium/high |
+| `max_severity` | string | Highest severity in the trip (`safe`, `low`, `medium`, `high`) |
+| `stress_score` | float | Weighted average: `(avg_motion × 0.55) + (avg_audio × 0.45)` |
+| `trip_quality_rating` | int | 1–5 scale (5 = excellent, 1 = critical) |
 
 ---
 
@@ -584,21 +603,31 @@ The pipeline was validated end-to-end against the existing sensor dataset on Mar
 | **Medium-severity events** | 5 |
 | **Low-severity events** | 36 |
 | **Trips with at least one flag** | 10 / 11 |
-| **Peak conflict score** | **1.0** (TRIP002 — dual-signal amplified emergency stop + very_loud audio) |
-| **Global mean conflict score** | 0.158 (expected baseline: most driving is safe) |
-| **Average speed across demo** | 30.9 km/h |
+| **Max stress score** | 0.7132 |
+| **Avg earnings velocity** | 9.15 ₹/min |
+| **Quality rating distribution** | 1★5 · 4★4 · 0★3 · 4★2 · 2★1 |
 
 ### Notable Event: TRIP002 Conflict Score 1.0
 
-The peak score was generated by TRIP002 at timestamp `2024-02-06 07:22:30`. The emergency stop (`motion_score = 1.0`) coincided with very loud audio (`audio_score = 0.65`). Both exceeded the `AMPLIFIER_GATE` of 0.60, triggering the dual-signal amplifier:
+The peak combined_score was generated by TRIP002 at timestamp `2024-02-06 07:22:30`. The emergency stop (`motion_score = 1.0`) coincided with very loud audio (`audio_score = 0.65`). Both exceeded the `AMPLIFIER_GATE` of 0.60, triggering the dual-signal amplifier:
 
 ```
-conflict = (1.0 × 0.55) + (0.65 × 0.45) = 0.8425
-conflict = min(0.8425 × 1.30, 1.0) = min(1.095, 1.0) = 1.0
+combined_score = (1.0 × 0.55) + (0.65 × 0.45) = 0.8425
+combined_score = min(0.8425 × 1.30, 1.0) = min(1.095, 1.0) = 1.0
 severity = "high" → upload_tier = "immediate"
 ```
 
 This is exactly the type of event the system is designed to surface — a physically dangerous manoeuvre compounding with cabin disturbance.
+
+### Trip Quality Rating Logic
+
+| Rating | Condition |
+|---|---|
+| ★5 (excellent) | 0 flagged moments |
+| ★4 (good) | 1–2 flags, max severity ≤ low |
+| ★3 (fair) | 1–2 flags, max severity = medium |
+| ★2 (poor) | 3+ flags OR max severity = high |
+| ★1 (critical) | 5+ flags AND max severity = high |
 
 ---
 

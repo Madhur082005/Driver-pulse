@@ -224,8 +224,19 @@ def align_sensors(accel: pd.DataFrame, audio: pd.DataFrame) -> pd.DataFrame:
 # 5. PIPELINE: gravity → motion → audio → fusion (per sample, per trip)
 # ---------------------------------------------------------------------------
 
-def _describe_event(fusion_result, motion_result, audio_result) -> str:
-    """Build a short human-readable description for a flagged moment."""
+# Global flag counter — produces FLAG0001, FLAG0002, …
+_flag_counter = 0
+
+
+def _next_flag_id() -> str:
+    """Generate a unique sequential flag ID like FLAG0001."""
+    global _flag_counter
+    _flag_counter += 1
+    return f"FLAG{_flag_counter:04d}"
+
+
+def _build_explanation(fusion_result, motion_result, audio_result) -> str:
+    """Build a human-readable explanation for a flagged moment."""
     parts: list[str] = []
     if motion_result.event_type not in ("normal", "road_noise"):
         parts.append(
@@ -239,19 +250,59 @@ def _describe_event(fusion_result, motion_result, audio_result) -> str:
         )
     if fusion_result.amplified:
         parts.append("dual-signal amplified")
-    return "; ".join(parts) if parts else f"Conflict score {fusion_result.conflict:.2f}"
+    return "; ".join(parts) if parts else f"Combined score {fusion_result.conflict:.2f}"
 
 
-def _rule_trigger(fusion_result, motion_result, audio_result) -> str:
-    """Produce a rule_trigger string compatible with the reference schema."""
-    triggers: list[str] = []
-    if motion_result.score > 0 and motion_result.event_type != "road_noise":
-        triggers.append(f"motion_{motion_result.event_type}")
-    if audio_result.score > 0:
-        triggers.append(f"audio_{audio_result.classification}")
-    if fusion_result.amplified:
-        triggers.append("dual_signal_amplifier")
-    return " + ".join(triggers) if triggers else fusion_result.severity
+def _build_context(motion_result, audio_result) -> str:
+    """Build an environment context string like 'High noise + Hard brake'."""
+    parts: list[str] = []
+
+    # Motion context
+    motion_map = {
+        "emergency_stop": "Emergency stop",
+        "harsh_brake": "Hard brake",
+        "moderate_brake": "Moderate brake",
+        "soft_brake": "Soft brake",
+        "harsh_corner": "Sharp turn",
+        "moderate_corner": "Moderate turn",
+    }
+    if motion_result.event_type in motion_map:
+        parts.append(motion_map[motion_result.event_type])
+
+    # Audio context
+    audio_map = {
+        "argument": "Verbal conflict",
+        "very_loud": "High noise",
+        "elevated": "Elevated noise",
+    }
+    if audio_result.classification in audio_map:
+        parts.append(audio_map[audio_result.classification])
+
+    return " + ".join(parts) if parts else "Normal conditions"
+
+
+def _compute_trip_quality_rating(flagged_count: int, max_severity: str) -> int:
+    """Compute a 1–5 trip quality rating (5 = best, 1 = worst).
+
+    Logic:
+        0 flags                         → 5 (excellent)
+        1-2 flags, max sev ≤ low        → 4 (good)
+        1-2 flags, max sev medium       → 3 (fair)
+        3+ flags OR max sev high        → 2 (poor)
+        5+ flags AND max sev high       → 1 (critical)
+    """
+    if flagged_count == 0:
+        return 5
+    if flagged_count >= 5 and max_severity == "high":
+        return 1
+    if flagged_count >= 3 or max_severity == "high":
+        return 2
+    if max_severity == "medium":
+        return 3
+    return 4
+
+
+_SEVERITY_RANK = {"high": 3, "medium": 2, "low": 1, "safe": 0}
 
 
 def run_pipeline(
@@ -260,10 +311,19 @@ def run_pipeline(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Process the merged sensor stream.
 
-    Returns (flagged_moments_df, trip_summaries_df) with schemas that
-    match the hackathon reference *and* include the richer fusion fields
-    the teammate requested (max/mean conflict, per-severity counts, etc.).
+    Returns (flagged_moments_df, trip_summaries_df) with the v2 schema:
+      - flagged: flag_id, trip_id, driver_id, timestamp, elapsed_seconds,
+                 flag_type, severity, motion_score, audio_score,
+                 combined_score, explanation, context
+      - summaries: trip_id, driver_id, date, duration_min, distance_km, fare,
+                   earnings_velocity, motion_events_count, audio_events_count,
+                   flagged_moments_count, max_severity, stress_score,
+                   trip_quality_rating
     """
+
+    # Reset global flag counter for a clean run
+    global _flag_counter
+    _flag_counter = 0
 
     # Build lookup tables from trips_demo
     trip_meta: dict[str, dict] = {}
@@ -271,8 +331,6 @@ def run_pipeline(
         trip_meta[t["trip_id"]] = {
             "driver_id": t["driver_id"],
             "date": t.get("date", ""),
-            "start_time": t.get("start_time", ""),
-            "end_time": t.get("end_time", ""),
             "duration_min": t.get("duration_min", 0),
             "distance_km": t.get("distance_km", 0),
             "fare": t.get("fare", 0),
@@ -291,9 +349,12 @@ def run_pipeline(
         prev_speed: float = 0.0
 
         # Per-trip accumulators
-        all_conflict_scores: list[float] = []
-        speeds: list[float] = []
-        severity_counts = {"high": 0, "medium": 0, "low": 0}
+        all_motion_scores: list[float] = []
+        all_audio_scores: list[float] = []
+        motion_events_count: int = 0
+        audio_events_count: int = 0
+        max_severity: str = "safe"
+        flagged_count: int = 0
 
         grp = grp.sort_values("elapsed_seconds")
         prev_accel_mag: float | None = None
@@ -311,9 +372,8 @@ def run_pipeline(
             gravity.feed(ax, ay, az, speed)
             cx, cy, cz = gravity.compensate(ax, ay, az)
 
-            # ── Jerk approximation (for reference-schema compatibility) ──
+            prev_accel_mag_val = prev_accel_mag  # save for jerk (unused in new schema but keep pipeline intact)
             accel_mag = math.sqrt(cx**2 + cy**2 + cz**2)
-            jerk = abs(accel_mag - prev_accel_mag) if prev_accel_mag is not None else 0.0
             prev_accel_mag = accel_mag
 
             # ── Motion classification ────────────────────────────────
@@ -333,67 +393,79 @@ def run_pipeline(
             # ── Fusion ───────────────────────────────────────────────
             fusion_result = fuse(motion_result, audio_result)
 
-            all_conflict_scores.append(fusion_result.conflict)
-            speeds.append(speed)
+            # Track motion/audio events for summary counts
+            if motion_result.event_type not in ("normal", "road_noise"):
+                all_motion_scores.append(motion_result.score)
+                motion_events_count += 1
+            if audio_result.classification != "background":
+                all_audio_scores.append(audio_result.score)
+                audio_events_count += 1
 
             # ── Flagged moment? ──────────────────────────────────────
             if fusion_result.severity in FLAG_SEVERITY_LEVELS:
-                severity_counts[fusion_result.severity] += 1
+                flagged_count += 1
+
+                # Track max severity
+                if _SEVERITY_RANK.get(fusion_result.severity, 0) > _SEVERITY_RANK.get(max_severity, 0):
+                    max_severity = fusion_result.severity
+
                 flagged_rows.append({
-                    # Reference-compatible columns
-                    "timestamp": row.get("timestamp", ""),
+                    "flag_id": _next_flag_id(),
                     "trip_id": trip_id,
                     "driver_id": driver_id,
-                    "event_type": fusion_result.flag_type or fusion_result.severity,
+                    "timestamp": row.get("timestamp", ""),
+                    "elapsed_seconds": round(elapsed, 2),
+                    "flag_type": fusion_result.flag_type or fusion_result.severity,
                     "severity": fusion_result.severity,
-                    "conflict_score": round(fusion_result.conflict, 4),
                     "motion_score": round(motion_result.score, 4),
                     "audio_score": round(audio_result.score, 4),
-                    "max_jerk_in_window": round(jerk, 6),
-                    "avg_audio_in_window": round(db, 1),
-                    "rule_trigger": _rule_trigger(fusion_result, motion_result, audio_result),
-                    "description": _describe_event(fusion_result, motion_result, audio_result),
+                    "combined_score": round(fusion_result.conflict, 4),
+                    "explanation": _build_explanation(fusion_result, motion_result, audio_result),
+                    "context": _build_context(motion_result, audio_result),
                 })
 
         # ── Per-trip summary (after all samples processed) ───────────
-        total_flags = sum(severity_counts.values())
-        conflict_arr = np.array(all_conflict_scores) if all_conflict_scores else np.array([0.0])
+        duration_min = float(meta.get("duration_min", 0))
+        fare = float(meta.get("fare", 0))
+        earnings_velocity = round(fare / duration_min, 2) if duration_min > 0 else 0.0
+
+        # stress_score: weighted average of motion and audio scores (same weights as fusion)
+        avg_motion = float(np.mean(all_motion_scores)) if all_motion_scores else 0.0
+        avg_audio = float(np.mean(all_audio_scores)) if all_audio_scores else 0.0
+        stress_score = round((avg_motion * 0.55) + (avg_audio * 0.45), 4)
+
+        trip_quality = _compute_trip_quality_rating(flagged_count, max_severity)
 
         summary_rows.append({
             "trip_id": trip_id,
             "driver_id": driver_id,
             "date": meta.get("date", ""),
-            "start_time": meta.get("start_time", ""),
-            "end_time": meta.get("end_time", ""),
-            "duration_min": meta.get("duration_min", 0),
+            "duration_min": duration_min,
             "distance_km": meta.get("distance_km", 0),
-            "fare": meta.get("fare", 0),
-            "total_samples": len(grp),
-            "total_flags_count": total_flags,
-            "high_count": severity_counts["high"],
-            "medium_count": severity_counts["medium"],
-            "low_count": severity_counts["low"],
-            "max_conflict_score": round(float(conflict_arr.max()), 4),
-            "mean_conflict_score": round(float(conflict_arr.mean()), 4),
-            "avg_speed": round(float(np.mean(speeds)), 2) if speeds else 0.0,
+            "fare": fare,
+            "earnings_velocity": earnings_velocity,
+            "motion_events_count": motion_events_count,
+            "audio_events_count": audio_events_count,
+            "flagged_moments_count": flagged_count,
+            "max_severity": max_severity,
+            "stress_score": stress_score,
+            "trip_quality_rating": trip_quality,
         })
 
     # ── Build DataFrames with explicit column order ──────────────────────
 
     flagged_cols = [
-        "timestamp", "trip_id", "driver_id", "event_type", "severity",
-        "conflict_score", "motion_score", "audio_score",
-        "max_jerk_in_window", "avg_audio_in_window",
-        "rule_trigger", "description",
+        "flag_id", "trip_id", "driver_id", "timestamp", "elapsed_seconds",
+        "flag_type", "severity", "motion_score", "audio_score",
+        "combined_score", "explanation", "context",
     ]
     flagged_df = pd.DataFrame(flagged_rows, columns=flagged_cols)
 
     summary_cols = [
-        "trip_id", "driver_id", "date", "start_time", "end_time",
-        "duration_min", "distance_km", "fare",
-        "total_samples", "total_flags_count",
-        "high_count", "medium_count", "low_count",
-        "max_conflict_score", "mean_conflict_score", "avg_speed",
+        "trip_id", "driver_id", "date", "duration_min", "distance_km", "fare",
+        "earnings_velocity", "motion_events_count", "audio_events_count",
+        "flagged_moments_count", "max_severity", "stress_score",
+        "trip_quality_rating",
     ]
     summaries_df = pd.DataFrame(summary_rows, columns=summary_cols)
 
@@ -449,10 +521,15 @@ def main() -> None:
     print("\n── Summary Stats ──────────────────────────────────────────")
     if not summaries.empty:
         print(f"   Trips with flags       : "
-              f"{(summaries['total_flags_count'] > 0).sum()} / {len(summaries)}")
-        print(f"   Max conflict (any trip): {summaries['max_conflict_score'].max():.4f}")
-        print(f"   Mean conflict (global) : {summaries['mean_conflict_score'].mean():.4f}")
-        print(f"   Avg speed (global)     : {summaries['avg_speed'].mean():.1f} km/h")
+              f"{(summaries['flagged_moments_count'] > 0).sum()} / {len(summaries)}")
+        print(f"   Max stress score       : {summaries['stress_score'].max():.4f}")
+        print(f"   Avg earnings velocity  : {summaries['earnings_velocity'].mean():.2f} ₹/min")
+        print(f"   Quality rating dist    : "
+              f"{(summaries['trip_quality_rating'] == 5).sum()}★5  "
+              f"{(summaries['trip_quality_rating'] == 4).sum()}★4  "
+              f"{(summaries['trip_quality_rating'] == 3).sum()}★3  "
+              f"{(summaries['trip_quality_rating'] == 2).sum()}★2  "
+              f"{(summaries['trip_quality_rating'] == 1).sum()}★1")
     if not flagged.empty:
         print(f"   Event breakdown        : "
               f"{(flagged['severity'] == 'high').sum()} high, "
