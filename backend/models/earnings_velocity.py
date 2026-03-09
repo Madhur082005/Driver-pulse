@@ -1,20 +1,22 @@
-from sqlalchemy import Column, String, Float
+from sqlalchemy import Column, Integer, String, Float
 from db import Base
 
-class DriverGoal(Base):
-    __tablename__ = "driver_goals"
+class EarningsVelocity(Base):
+    __tablename__ = "earnings_velocity"
 
-    goal_id = Column(String, primary_key=True)
+    log_id = Column(Integer, primary_key=True, index=True)
+
     driver_id = Column(String)
     date = Column(String)
-
-    shift_start_time = Column(String)
-    shift_end_time = Column(String)
-
-    target_earnings = Column(Float)
-    target_hours = Column(Float)
-
-    current_earnings = Column(Float)
-    current_hours = Column(Float)
-
     timestamp = Column(String)
+
+    cumulative_earnings = Column(Float)
+    elapsed_hours = Column(Float)
+
+    current_velocity = Column(Float)
+    target_velocity = Column(Float)
+
+    velocity_delta = Column(Float)
+    trips_completed = Column(Integer)
+
+    forecast_status = Column(String)
