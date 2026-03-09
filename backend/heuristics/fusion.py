@@ -1,0 +1,93 @@
+# heuristics/fusion.py
+# ─────────────────────────────────────────────────────────────────────────────
+# Conflict Fusion & Event Gate
+#
+# Combines motion_score and audio_score into a single conflict_score,
+# classifies severity, and decides the upload tier.
+#
+# Fusion formula:
+#   conflict = (motion * 0.55) + (audio * 0.45)
+#   if motion >= 0.6 AND audio >= 0.6:
+#       conflict = min(conflict * 1.3, 1.0)   ← amplifier for dual-signal events
+#
+# Severity thresholds:
+#   HIGH   ≥ 0.75  → immediate upload  < 2s
+#   MEDIUM ≥ 0.45  → fast queue        < 8s
+#   LOW    ≥ 0.25  → batch             60s
+#   SAFE   < 0.25  → discard
+# ─────────────────────────────────────────────────────────────────────────────
+
+from dataclasses import dataclass
+from heuristics.motion import MotionResult, motion_to_flag_type
+from heuristics.audio  import AudioResult,  audio_to_flag_type
+
+# ── Weights ──────────────────────────────────────────────────────────────────
+MOTION_WEIGHT  = 0.55
+AUDIO_WEIGHT   = 0.45
+AMPLIFIER      = 1.30
+AMPLIFIER_GATE = 0.60   # both scores must exceed this for amplifier to apply
+
+# ── Severity thresholds ──────────────────────────────────────────────────────
+HIGH_THRESHOLD   = 0.75
+MEDIUM_THRESHOLD = 0.45
+LOW_THRESHOLD    = 0.25
+
+
+@dataclass
+class FusionResult:
+    severity:      str    # "high" | "medium" | "low" | "safe"
+    conflict:      float  # 0.0 – 1.0
+    flag_type:     str | None
+    motion_score:  float
+    audio_score:   float
+    upload_tier:   str    # "immediate" | "fast" | "batch" | "discard"
+    amplified:     bool   # True if dual-signal amplifier was applied
+
+
+def fuse(motion: MotionResult, audio: AudioResult) -> FusionResult:
+    """
+    Fuse motion and audio scores into a single conflict score.
+    Determine severity and upload tier.
+    """
+    ms = motion.score
+    aus = audio.score
+
+    # ── Weighted fusion ──────────────────────────────────────────────────────
+    conflict = (ms * MOTION_WEIGHT) + (aus * AUDIO_WEIGHT)
+
+    # ── Dual-signal amplifier ────────────────────────────────────────────────
+    amplified = False
+    if ms >= AMPLIFIER_GATE and aus >= AMPLIFIER_GATE:
+        conflict  = min(conflict * AMPLIFIER, 1.0)
+        amplified = True
+
+    # ── Severity classification ──────────────────────────────────────────────
+    if conflict >= HIGH_THRESHOLD:
+        severity    = "high"
+        upload_tier = "immediate"
+    elif conflict >= MEDIUM_THRESHOLD:
+        severity    = "medium"
+        upload_tier = "fast"
+    elif conflict >= LOW_THRESHOLD:
+        severity    = "low"
+        upload_tier = "batch"
+    else:
+        severity    = "safe"
+        upload_tier = "discard"
+
+    # ── Flag type: motion takes priority, fall back to audio ────────────────
+    flag_type = None
+    if severity != "safe":
+        flag_type = motion_to_flag_type(motion.event_type) or audio_to_flag_type(audio.classification)
+        if not flag_type:
+            flag_type = "sustained_stress"
+
+    return FusionResult(
+        severity=severity,
+        conflict=round(conflict, 4),
+        flag_type=flag_type,
+        motion_score=round(ms, 4),
+        audio_score=round(aus, 4),
+        upload_tier=upload_tier,
+        amplified=amplified,
+    )
