@@ -17,9 +17,12 @@
 #   SAFE   < 0.25  → discard
 # ─────────────────────────────────────────────────────────────────────────────
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from heuristics.motion import MotionResult, motion_to_flag_type
-from heuristics.audio  import AudioResult,  audio_to_flag_type
+
+from .motion import MotionResult, motion_to_flag_type
+from .audio import AudioResult, audio_to_flag_type
 
 # ── Weights ──────────────────────────────────────────────────────────────────
 MOTION_WEIGHT  = 0.55
