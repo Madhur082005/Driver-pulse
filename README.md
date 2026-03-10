@@ -2,6 +2,11 @@
 
 A lightweight, edge-first system that turns raw phone sensor data into actionable safety alerts and earnings coaching for ride-hailing drivers — in real time, with no extra hardware.
 
+
+Deployed Link : https://driver-pulse-seven.vercel.app/
+Video Link : https://drive.google.com/drive/folders/1bbtQc2DY_bd0nG73F-7sbb9rOrauC8-w?usp=sharing
+Github : https://github.com/Madhur082005/Driver-pulse
+
 ---
 
 ## Table of Contents
