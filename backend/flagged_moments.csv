@@ -1,0 +1,8 @@
+flag_id,trip_id,driver_id,timestamp,elapsed_seconds,flag_type,severity,motion_score,audio_score,combined_score,explanation,context
+FLAG0022,TRIP_001,DRV_ARJUN,2024-10-25 07:11:00,360.0,harsh_braking,medium,1.0,0.0,0.55,Motion: emergency stop (score 1.00),Emergency stop
+FLAG0023,TRIP_003,DRV_ARJUN,2024-10-25 08:13:00,660.0,audio_spike,low,0.0,0.65,0.2925,Audio: very_loud (score 0.65),High noise
+FLAG0024,TRIP_003,DRV_ARJUN,2024-10-25 08:14:00,720.0,audio_spike,low,0.0,0.65,0.2925,Audio: very_loud (score 0.65),High noise
+FLAG0025,TRIP_003,DRV_ARJUN,2024-10-25 08:15:00,780.0,audio_spike,low,0.0,0.65,0.2925,Audio: very_loud (score 0.65),High noise
+FLAG0026,TRIP_005,DRV_ARJUN,2024-10-25 09:19:00,660.0,audio_spike,low,0.0,0.65,0.2925,Audio: very_loud (score 0.65),High noise
+FLAG0027,TRIP_005,DRV_ARJUN,2024-10-25 09:20:00,720.0,conflict_moment,low,0.0,0.92,0.414,Audio: argument (score 0.92),Verbal conflict
+FLAG0028,TRIP_005,DRV_ARJUN,2024-10-25 09:21:00,780.0,conflict_moment,low,0.0,0.92,0.414,Audio: argument (score 0.92),Verbal conflict

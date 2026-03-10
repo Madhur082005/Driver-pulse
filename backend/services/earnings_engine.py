@@ -28,13 +28,11 @@ def evaluate_goal(goal):
     """
     Evaluate a driver's earnings goal and classify their status.
 
-    Expects an object with at least:
-    - goal_id
-    - driver_id
-    - target_earnings
-    - target_hours
-    - current_earnings
-    - current_hours
+    The goal object only needs these numeric fields:
+      - target_earnings, target_hours
+      - current_earnings, current_hours
+    It can be a Pydantic model, a SimpleNamespace, or any object with
+    those attributes. This keeps the logic easy to reuse on the edge.
     """
 
     if goal.target_hours == 0:

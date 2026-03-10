@@ -1,5 +1,3 @@
-# heuristics/gravity.py
-# ─────────────────────────────────────────────────────────────────────────────
 # Gravity Compensation
 #
 # A phone mounted in a car is tilted — the Z-axis isn't perfectly vertical.

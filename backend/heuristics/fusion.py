@@ -1,5 +1,3 @@
-# heuristics/fusion.py
-# ─────────────────────────────────────────────────────────────────────────────
 # Conflict Fusion & Event Gate
 #
 # Combines motion_score and audio_score into a single conflict_score,

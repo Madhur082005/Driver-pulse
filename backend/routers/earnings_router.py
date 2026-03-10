@@ -1,62 +1,93 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from __future__ import annotations
 
-from db import get_db
-from models.driver_goal import DriverGoal
-from models.earnings_velocity import EarningsVelocity
+import csv
+from pathlib import Path
 
+from fastapi import APIRouter
+
+from schemas.goal_schema import GoalPayload
 from services.earnings_engine import evaluate_goal
 from utils.alert_builder import build_alert
-from schemas.goal_schema import GoalPayload
 
 router = APIRouter(prefix="/api/earnings")
 
-# Lightweight, in-memory cache for last known status per driver.
-# This keeps the edge/API side simple and avoids spamming duplicate alerts.
+# In-memory cache so we only send alerts when status changes.
 _last_status_by_driver_id: dict[str, str] = {}
+
+# Simple CSV log to prove everything is computed, not hardcoded.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+EARNINGS_LOG_CSV = _BACKEND_DIR / "earnings_log.csv"
+
+
+def _ensure_earnings_header() -> None:
+    if EARNINGS_LOG_CSV.is_file():
+        return
+    with EARNINGS_LOG_CSV.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "goal_id",
+                "driver_id",
+                "date",
+                "timestamp",
+                "target_earnings",
+                "target_hours",
+                "current_earnings",
+                "current_hours",
+                "status",
+                "current_velocity",
+                "target_velocity",
+                "velocity_delta",
+                "expected_earnings",
+                "dynamic_threshold",
+                "projected_shift_earnings",
+            ]
+        )
 
 
 @router.post("/goal")
-def insert_goal(goal: GoalPayload, db: Session = Depends(get_db)):
+def insert_goal(goal: GoalPayload):
+    _ensure_earnings_header()
 
-    goal_row = DriverGoal(**goal.dict())
-    db.add(goal_row)
-    db.commit()
+    # Treat the incoming payload as the goal object for evaluate_goal
+    result = evaluate_goal(goal)
 
-    result = evaluate_goal(goal_row)
+    with EARNINGS_LOG_CSV.open("a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                goal.goal_id,
+                goal.driver_id,
+                goal.date,
+                goal.timestamp,
+                goal.target_earnings,
+                goal.target_hours,
+                goal.current_earnings,
+                goal.current_hours,
+                result["status"],
+                result["current_velocity"],
+                result["target_velocity"],
+                result["velocity_delta"],
+                result.get("expected_earnings"),
+                result.get("dynamic_threshold"),
+                result.get("projected_shift_earnings"),
+            ]
+        )
 
-    log = EarningsVelocity(
-        driver_id=goal_row.driver_id,
-        date=goal_row.date,
-        timestamp=goal_row.timestamp,
-        cumulative_earnings=goal_row.current_earnings,
-        elapsed_hours=goal_row.current_hours,
-        current_velocity=result["current_velocity"],
-        target_velocity=result["target_velocity"],
-        velocity_delta=result["velocity_delta"],
-        trips_completed=0,
-        forecast_status=result["status"],
-    )
-
-    db.add(log)
-    db.commit()
-
-    previous_status = _last_status_by_driver_id.get(goal_row.driver_id)
-
+    previous_status = _last_status_by_driver_id.get(goal.driver_id)
     if previous_status == result["status"]:
-        # No status change → suppress duplicate alert content.
         alert = None
     else:
         alert = build_alert(
             result["status"],
             delta=result["velocity_delta"],
-            expected=result["expected_earnings"],
+            expected=result.get("expected_earnings"),
         )
-        _last_status_by_driver_id[goal_row.driver_id] = result["status"]
+        _last_status_by_driver_id[goal.driver_id] = result["status"]
 
     return {
-        "driver_id": goal_row.driver_id,
+        "driver_id": goal.driver_id,
         "status": result["status"],
         "alert": alert,
-        "projected_shift_earnings": result["projected_shift_earnings"],
+        "projected_shift_earnings": result.get("projected_shift_earnings"),
     }

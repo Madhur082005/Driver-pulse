@@ -1,22 +1,19 @@
-# heuristics/motion.py
-# ─────────────────────────────────────────────────────────────────────────────
 # Motion Classifier — Braking & Cornering
-#
+
 # Thresholds derived from dataset percentile analysis:
 #   accel_y (braking):   p80=1.60g  p90=1.80g  p95=2.00g  harsh_mean=3.24g
 #   accel_x (cornering): p80=2.60g  p90=2.80g  p95=2.90g  harsh_mean=4.30g
-#
+
 # Speed-delta validation: a large Y-axis spike without a corresponding
 # speed drop is road noise / pothole, not braking. We store only the
 # previous speed (1 float) to validate.
-#
+
 # All functions are stateless per-sample (O(1), no rolling windows).
 # Variable sampling rate in the dataset means rolling windows are unsafe.
-# ─────────────────────────────────────────────────────────────────────────────
 
 from dataclasses import dataclass
 
-# ── Braking thresholds (accel_y, gravity-compensated) ───────────────────────
+#Braking thresholds (accel_y, gravity-compensated) 
 EMERGENCY_STOP_G  = 4.0    # score 1.00
 HARSH_BRAKE_G     = 2.8    # score 0.82
 MODERATE_BRAKE_G  = 1.80   # score 0.48
@@ -27,7 +24,7 @@ EMERGENCY_SPEED_DELTA  = -15.0   # km/h change required
 HARSH_SPEED_DELTA      = -10.0
 MODERATE_SPEED_DELTA   = -5.0
 
-# ── Cornering thresholds (abs(accel_x), gravity-compensated) ────────────────
+#Cornering thresholds (abs(accel_x), gravity-compensated)
 HARSH_CORNER_G    = 3.5    # score 0.85
 MODERATE_CORNER_G = 2.80   # score 0.50
 
@@ -84,7 +81,7 @@ def classify_motion(
     if abs_y >= SOFT_BRAKE_G:
         return MotionResult("soft_brake", 0.20, "y_brake")
 
-    # ── Cornering (X axis) ──────────────────────────────────────────────────
+    #  Cornering (X axis)
     if abs_x >= HARSH_CORNER_G:
         return MotionResult("harsh_corner", 0.85, "x_corner")
 

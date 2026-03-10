@@ -1,21 +1,33 @@
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+
 from routers.earnings_router import router as earnings_router
-from heuristics.stream import stream_sensor_events
+from heuristics.demo_stream import stream_demo_events
 
 app = FastAPI()
+
+# Allow the Next.js dev server to connect to this backend (SSE)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(earnings_router)
 
 
-@app.get("/api/sensor/stream")
-async def sensor_stream(
-    trip_id: str | None = Query(None, description="Filter to a specific trip ID"),
-    interval: float = Query(0.5, ge=0.05, le=5.0, description="Seconds between SSE pushes"),
+@app.get("/api/sensor/demo")
+async def sensor_demo_stream(
+    interval: float = Query(
+        0.05, ge=0.01, le=1.0, description="Seconds between synthetic demo events"
+    ),
 ):
-    """SSE endpoint — streams classified sensor events to the frontend."""
+    """SSE endpoint — streams **synthetic** per-second demo data for live walkthroughs."""
     return StreamingResponse(
-        stream_sensor_events(trip_id=trip_id, interval_sec=interval),
+        stream_demo_events(interval_sec=interval),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

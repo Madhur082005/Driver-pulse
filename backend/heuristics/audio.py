@@ -1,7 +1,4 @@
-# heuristics/audio.py
-# ─────────────────────────────────────────────────────────────────────────────
 # Audio Classifier
-#
 # KEY INSIGHT FROM DATA:
 #   All audio dB ranges overlap completely (50–98 dB across ALL classes).
 #   Decibel level alone is USELESS as a discriminator.
@@ -15,11 +12,10 @@
 # sustained_duration as the primary gate.
 #
 # Audio baseline dB is still tracked for the output log (raw_value field).
-# ─────────────────────────────────────────────────────────────────────────────
 
 from dataclasses import dataclass
 
-# ── Thresholds ───────────────────────────────────────────────────────────────
+# Thresholds
 ARGUMENT_DURATION_SEC  = 90.0    # sustained ≥ 90s + 10dB above baseline → argument
 VERY_LOUD_DURATION_SEC = 50.0    # sustained ≥ 50s → very loud
 ARGUMENT_DB_ABOVE      = 10.0    # dB above baseline required for argument classification

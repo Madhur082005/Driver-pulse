@@ -55,7 +55,7 @@ export function EarningsChart({ data }: EarningsChartProps) {
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#444", fontSize: 10, fontWeight: 500 }}
-            tickFormatter={(v: number) => `$${v}`}
+            tickFormatter={(v: number) => `₹${v}`}
             width={42}
           />
           <Tooltip content={<ChartTooltip />} cursor={false} />
