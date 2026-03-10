@@ -186,6 +186,11 @@ def _generate_trip_samples(
     audio_db  = np.random.normal(52.0, 2.0,  num_samples)   # quiet cabin baseline
     speed_kmh = np.random.normal(base_speed, 4.0, num_samples).clip(0)
 
+    # Every trip starts stationary during passenger pickup.  This is
+    # realistic AND gives the GravityCompensator its calibration samples.
+    warmup = min(3, num_samples)
+    speed_kmh[0:warmup] = 0.0
+
     # Anomaly injection window — always at sample index 'onset'
     # We choose onset = 40% into the trip so it is clearly mid-ride
     onset = max(2, int(num_samples * 0.40))
@@ -196,9 +201,11 @@ def _generate_trip_samples(
         y_accel[onset]             = -5.5          # 1 sample flagged
 
     elif trip.anomaly == "hard_brake":
-        # Single harsh braking event — 1 sample
-        speed_kmh[onset] = 68.0                    # was travelling fast
-        y_accel[onset]   = -6.8                    # 1 sample flagged
+        # Single harsh braking event — car was going fast, then brakes hard.
+        # Speed must DROP at the onset sample for the speed-delta gate to pass.
+        speed_kmh[max(0, onset - 1)] = 65.0        # fast approach
+        speed_kmh[onset]             = 22.0         # braked to a crawl (-43 km/h)
+        y_accel[onset]               = -3.2         # 3.2g → harsh_brake tier
 
     elif trip.anomaly == "loud_passenger":
         # Passenger on a phone call — elevated but NOT argument-level; 3 samples
@@ -209,14 +216,26 @@ def _generate_trip_samples(
         z_accel[onset] = 16.5                      # 1 sample flagged
 
     elif trip.anomaly == "conflict":
-        # 1 harsh brake (driver reacts) + brief verbal argument (3 samples)
-        y_accel[onset]                = -7.8       # 1 motion flag
-        audio_db[onset + 1:onset + 4] = 88.0       # 3 audio flags (sustained)
+        # Argument escalates → driver brakes hard in frustration.
+        # Audio starts 2 samples BEFORE the brake so sustained_sec builds
+        # to argument level (≥90s) by the time motion fires.  This lets
+        # the dual-signal amplifier trigger → HIGH severity.
+        end_audio = min(onset + 2, num_samples)
+        audio_db[max(0, onset - 2):end_audio] = 88.0     # sustained argument
+        speed_kmh[max(0, onset - 1)]           = 58.0    # fast approach
+        speed_kmh[onset]                       = 14.0    # panic brake (-44 km/h)
+        y_accel[onset]                         = -3.6    # harsh_brake tier
 
     elif trip.anomaly == "rapid_brake_pair":
-        # Two moderate brakes separated by ~6 samples (traffic signal jumping)
-        y_accel[onset]     = -5.2                  # 1 flag
-        y_accel[onset + 6] = -5.0                  # 1 flag (if onset+6 < num_samples)
+        # Two moderate brakes separated by ~6 samples (traffic signal jumping).
+        # Each brake needs a speed drop for the speed-delta gate.
+        speed_kmh[max(0, onset - 1)] = 48.0
+        speed_kmh[onset]             = 25.0                # first brake (-23 km/h)
+        y_accel[onset]               = -2.0                # moderate_brake tier
+        if onset + 6 < num_samples:                        # guard: short trips
+            speed_kmh[max(0, onset + 5)] = 46.0
+            speed_kmh[onset + 6]         = 24.0            # second brake (-22 km/h)
+            y_accel[onset + 6]           = -1.9            # moderate_brake tier
 
     elif trip.anomaly == "device_tilt":
         # Phone slips/tilts — single spike then back to normal
@@ -275,12 +294,22 @@ async def stream_demo_events(
         current_time = shift_start + timedelta(minutes=5)
 
         for trip in trips:
+            # ── Per-trip counters ─────────────────────────────────────────
             motion_events_count   = 0
             audio_events_count    = 0
             flagged_moments_count = 0
             max_severity          = "safe"
             motion_scores: list[float] = []
             audio_scores:  list[float] = []
+
+            # Reset cross-trip state so the last sample of trip N can't
+            # bleed into the first sample of trip N+1.  Without this:
+            #   - prev_speed from a fast-ending trip triggers a phantom
+            #     harsh-brake at the start of the next trip.
+            #   - sustained_loud_sec from a noisy-ending trip inflates
+            #     the audio classifier at the next trip's first sample.
+            prev_speed         = 0.0
+            sustained_loud_sec = 0.0
 
             trip_steps    = trip.duration_min or 1
             per_step_fare = trip.fare / trip_steps
@@ -459,7 +488,6 @@ async def stream_demo_events(
                         "severity":    fusion_result.severity,
                         "conflict":    fusion_result.conflict,
                         "flag_type":   fusion_result.flag_type,
-                        "upload_tier": fusion_result.upload_tier,
                         "amplified":   fusion_result.amplified,
                     },
                 }

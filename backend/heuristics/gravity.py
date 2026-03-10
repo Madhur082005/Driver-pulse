@@ -10,6 +10,10 @@
 FALLBACK_Z_BASELINE = 9.742   # from dataset mean (stationary samples)
 CALIBRATION_SAMPLES = 3       # number of stationary samples needed to calibrate
 
+# GPS/speed sensors rarely report exactly 0 km/h.  Anything below this
+# is "close enough to stationary" for gravity offset estimation.
+STATIONARY_SPEED_KMH = 2.0
+
 
 class GravityCompensator:
     """
@@ -37,7 +41,7 @@ class GravityCompensator:
         if self.calibrated:
             return True
 
-        if speed_kmh == 0.0:
+        if speed_kmh < STATIONARY_SPEED_KMH:
             self._samples_x.append(ax)
             self._samples_y.append(ay)
             self._samples_z.append(az)

@@ -1,7 +1,7 @@
 # Conflict Fusion & Event Gate
 #
-# Combines motion_score and audio_score into a single conflict_score,
-# classifies severity, and decides the upload tier.
+# Combines motion_score and audio_score into a single conflict_score
+# and classifies severity.
 #
 # Fusion formula:
 #   conflict = (motion * 0.55) + (audio * 0.45)
@@ -9,10 +9,10 @@
 #       conflict = min(conflict * 1.3, 1.0)   ← amplifier for dual-signal events
 #
 # Severity thresholds:
-#   HIGH   ≥ 0.75  → immediate upload  < 2s
-#   MEDIUM ≥ 0.45  → fast queue        < 8s
-#   LOW    ≥ 0.25  → batch             60s
-#   SAFE   < 0.25  → discard
+#   HIGH   ≥ 0.75
+#   MEDIUM ≥ 0.45
+#   LOW    ≥ 0.25
+#   SAFE   < 0.25
 # ─────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
@@ -41,14 +41,13 @@ class FusionResult:
     flag_type:     str | None
     motion_score:  float
     audio_score:   float
-    upload_tier:   str    # "immediate" | "fast" | "batch" | "discard"
     amplified:     bool   # True if dual-signal amplifier was applied
 
 
 def fuse(motion: MotionResult, audio: AudioResult) -> FusionResult:
     """
     Fuse motion and audio scores into a single conflict score.
-    Determine severity and upload tier.
+    Determine severity.
     """
     ms = motion.score
     aus = audio.score
@@ -64,17 +63,13 @@ def fuse(motion: MotionResult, audio: AudioResult) -> FusionResult:
 
     # ── Severity classification ──────────────────────────────────────────────
     if conflict >= HIGH_THRESHOLD:
-        severity    = "high"
-        upload_tier = "immediate"
+        severity = "high"
     elif conflict >= MEDIUM_THRESHOLD:
-        severity    = "medium"
-        upload_tier = "fast"
+        severity = "medium"
     elif conflict >= LOW_THRESHOLD:
-        severity    = "low"
-        upload_tier = "batch"
+        severity = "low"
     else:
-        severity    = "safe"
-        upload_tier = "discard"
+        severity = "safe"
 
     # ── Flag type: motion takes priority, fall back to audio ────────────────
     flag_type = None
@@ -89,6 +84,5 @@ def fuse(motion: MotionResult, audio: AudioResult) -> FusionResult:
         flag_type=flag_type,
         motion_score=round(ms, 4),
         audio_score=round(aus, 4),
-        upload_tier=upload_tier,
         amplified=amplified,
     )

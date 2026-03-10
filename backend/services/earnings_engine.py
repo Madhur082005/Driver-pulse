@@ -65,10 +65,20 @@ def evaluate_goal(goal):
 
     expected = target_velocity * goal.current_hours
 
-    # Be more forgiving early in the shift where variance is naturally high
+    # Be more forgiving early in the shift where variance is naturally high.
+    # Smooth ramp: scale goes from EARLY_EXPECTED_SCALE (0.8) at hour 0
+    # to 1.0 at EARLY_HOURS_WINDOW (1 hour).  This eliminates the
+    # discontinuity that a hard if-branch would create at exactly 1 hour.
     if goal.current_hours < EARLY_HOURS_WINDOW:
-        expected *= EARLY_EXPECTED_SCALE
+        scale = EARLY_EXPECTED_SCALE + (
+            (1.0 - EARLY_EXPECTED_SCALE)
+            * (goal.current_hours / EARLY_HOURS_WINDOW)
+        )
+        expected *= scale
 
+    # NOTE: despite the name, velocity_delta is an EARNINGS gap (₹) not a
+    # velocity gap (₹/hr).  It answers "how many rupees ahead/behind am I
+    # compared to where I should be right now?"  Kept for API compatibility.
     velocity_delta = goal.current_earnings - expected
 
     # Projected end-of-shift earnings based on current velocity.

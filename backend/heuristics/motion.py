@@ -78,6 +78,11 @@ def classify_motion(
         else:
             return MotionResult("road_noise", 0.05, "none")
 
+    # Soft brakes intentionally have NO speed-delta gate.  At 1.6g the
+    # deceleration is gentle enough to occur without a large speed drop
+    # (e.g., rolling to a stop or speed-bump response).  Higher tiers
+    # require a matching speed change to distinguish real braking from
+    # road noise / potholes.
     if abs_y >= SOFT_BRAKE_G:
         return MotionResult("soft_brake", 0.20, "y_brake")
 
