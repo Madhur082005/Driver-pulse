@@ -1,0 +1,12 @@
+flag_id,trip_id,driver_id,timestamp,elapsed_seconds,flag_type,severity,motion_score,audio_score,combined_score,explanation,context
+FLAG0012,TRIP_001,DRV_ARJUN,2024-10-25 07:11:00,360.0,harsh_braking,medium,1.0,0.0,0.55,Motion: emergency stop (score 1.00),Emergency stop
+FLAG0013,TRIP_003,DRV_ARJUN,2024-10-25 08:13:00,660.0,audio_spike,low,0.0,0.65,0.2925,Audio: very_loud (score 0.65),High noise
+FLAG0014,TRIP_003,DRV_ARJUN,2024-10-25 08:14:00,720.0,audio_spike,low,0.0,0.65,0.2925,Audio: very_loud (score 0.65),High noise
+FLAG0015,TRIP_003,DRV_ARJUN,2024-10-25 08:15:00,780.0,audio_spike,low,0.0,0.65,0.2925,Audio: very_loud (score 0.65),High noise
+FLAG0016,TRIP_004,DRV_ARJUN,2024-10-25 08:47:00,420.0,harsh_braking,medium,0.82,0.0,0.451,Motion: harsh brake (score 0.82),Hard brake
+FLAG0017,TRIP_005,DRV_ARJUN,2024-10-25 09:16:00,480.0,audio_spike,low,0.0,0.65,0.2925,Audio: very_loud (score 0.65),High noise
+FLAG0018,TRIP_005,DRV_ARJUN,2024-10-25 09:17:00,540.0,conflict_moment,low,0.0,0.92,0.414,Audio: argument (score 0.92),Verbal conflict
+FLAG0019,TRIP_005,DRV_ARJUN,2024-10-25 09:18:00,600.0,harsh_braking,high,0.82,0.92,1.0,Motion: harsh brake (score 0.82); Audio: argument (score 0.92); dual-signal amplified,Hard brake + Verbal conflict
+FLAG0020,TRIP_005,DRV_ARJUN,2024-10-25 09:19:00,660.0,conflict_moment,low,0.0,0.92,0.414,Audio: argument (score 0.92),Verbal conflict
+FLAG0021,TRIP_006,DRV_ARJUN,2024-10-25 09:55:00,720.0,moderate_brake,low,0.48,0.0,0.264,Motion: moderate brake (score 0.48),Moderate brake
+FLAG0022,TRIP_006,DRV_ARJUN,2024-10-25 10:01:00,1080.0,moderate_brake,low,0.48,0.0,0.264,Motion: moderate brake (score 0.48),Moderate brake
