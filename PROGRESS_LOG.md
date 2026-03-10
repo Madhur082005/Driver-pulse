@@ -1,6 +1,6 @@
 # Driver Pulse — Hackathon Progress Log
 
-**Team**: Hansuja  
+**Team**: Hansuja, Ansheeka, Madhur  
 **Project**: Driver Pulse — Real-Time Safety & Earnings Intelligence for Uber Drivers  
 **Duration**: March 4 – March 10, 2026 (7 days)
 
